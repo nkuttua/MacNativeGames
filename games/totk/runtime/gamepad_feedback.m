@@ -1,6 +1,6 @@
 /* The Mac controller's haptics and motion sensors for the game's HD rumble and six-axis sensor (runtime/hid_feedback.c),
-   2026-10-17. On by default (TOTK_RUMBLE=0 / TOTK_GYRO=0, or rumble.txt / gyro.txt saying off, turn them off), and only on
-   macOS (iOS: stubs, never on).
+   2026-10-17. On by default (TOTK_RUMBLE=0 / TOTK_GYRO=0, or rumble.txt / gyro.txt saying off, turn them off). iOS:
+   motion only, below.
    Rumble: each of the game's two vibration devices (left, right) is a Core Haptics engine on that handle of the
    controller (GCHapticsLocalityLeftHandle / RightHandle; a DualSense has both) playing a long continuous event. The
    game's value (two bands, each an amplitude 0..1 at a frequency) sets the event's intensity (TOTK_RUMBLE_GAIN, else
@@ -27,14 +27,82 @@ int runtime_triggers_available(void) { return 0; }
 int runtime_triggers_locked(void) { return 1; }
 int runtime_triggers_choice(void) { return 0; }
 void runtime_triggers_choose(int on) { (void)on; }
-void runtime_feedback_attach(GCController *c) { (void)c; }
-void runtime_feedback_detach(GCController *c) { (void)c; }
 void runtime_feedback_quiet(void) {}
+/* iPhone / iPad: no rumble. Motion comes from a controller with a gyro (DualSense, DualShock 4, Switch Pro Controller,
+   Joy-Con: GCMotion, as on the Mac) and, on an iPhone or iPad while none is connected, from the device's own sensors
+   (CoreMotion): the device is then the console in handheld mode, for touch play or a clip-on controller without a gyro.
+   CMDeviceMotion is in the portrait frame (x toward the right edge, y toward the top, z out of the screen; gravity and
+   rotation rate signed as GCMotion's). The game is landscape, so each sample is turned into the Switch's frame (x right,
+   y up as the player sees the screen): top of the device on the left (UIInterfaceOrientationLandscapeRight) x = -y,
+   y = x; on the right x = y, y = -x. Both are rotations, so the rotation rate turns the same way. Turning the device
+   over starts the orientation over (runtime_motion_start). visionOS has no device motion: controllers only. */
+static GCController *motionPad;               /* main queue */
+#if TARGET_OS_IOS
+#import <CoreMotion/CoreMotion.h>
+#import <UIKit/UIKit.h>
+static CMMotionManager *deviceMotion;         /* main queue */
+static UIInterfaceOrientation deviceTurn;     /* main queue: the orientation the device's samples are turned for */
+static UIInterfaceOrientation interface_orientation(void) {   /* main queue */
+    for (UIScene *s in UIApplication.sharedApplication.connectedScenes)
+        if ([s isKindOfClass:UIWindowScene.class]) return ((UIWindowScene *)s).effectiveGeometry.interfaceOrientation;
+    return UIInterfaceOrientationUnknown;
+}
+static void device_sample(CMDeviceMotion *m) {   /* main queue */
+    UIInterfaceOrientation o = interface_orientation();
+    if (o != deviceTurn) { deviceTurn = o; runtime_motion_start(); }
+    double s = o == UIInterfaceOrientationLandscapeLeft ? 1 : -1;
+    CMAcceleration g = m.gravity, u = m.userAcceleration; CMRotationRate r = m.rotationRate;
+    const double acc[3] = {s * (g.y + u.y), -s * (g.x + u.x), g.z + u.z}, gyro[3] = {s * r.y, -s * r.x, r.z};
+    runtime_motion_feed(acc, gyro, runtime_now_ns());
+}
+/* The device's sensors run while motion is on and no controller gives it. */
+static void device_motion_update(void) {   /* main queue */
+    BOOL want = runtime_gyro_enabled() && !motionPad;
+    if (want == deviceMotion.isDeviceMotionActive) return;
+    if (!deviceMotion) deviceMotion = [CMMotionManager new];
+    if (!deviceMotion.deviceMotionAvailable) { static BOOL told; if (!told) fprintf(stderr, "[gyro] this device has no motion sensors\n"); told = YES; return; }
+    if (!want) { [deviceMotion stopDeviceMotionUpdates]; fprintf(stderr, "[gyro] device motion off: the controller has it\n"); return; }
+    deviceMotion.deviceMotionUpdateInterval = 1.0 / 100;
+    deviceTurn = UIInterfaceOrientationUnknown; runtime_motion_deadzone_default(0);
+    [deviceMotion startDeviceMotionUpdatesToQueue:NSOperationQueue.mainQueue withHandler:^(CMDeviceMotion *m, NSError *e) { (void)e; if (m) device_sample(m); }];
+    runtime_motion_live(1);
+    fprintf(stderr, "[gyro] device motion on (100 a second): the iPhone / iPad is the console in handheld mode\n");
+}
+#else
+static void device_motion_update(void) {}
+#endif
+static void controller_sample(GCMotion *m) {   /* the controller's handler queue */
+    GCAcceleration a = m.acceleration;
+    if (m.hasGravityAndUserAcceleration) { a.x = m.gravity.x + m.userAcceleration.x; a.y = m.gravity.y + m.userAcceleration.y; a.z = m.gravity.z + m.userAcceleration.z; }
+    const double acc[3] = {a.x, a.y, a.z}, gyro[3] = {m.rotationRate.x, m.rotationRate.y, m.rotationRate.z};
+    runtime_motion_feed(acc, gyro, runtime_now_ns());
+}
+void runtime_feedback_start(void) { dispatch_async(dispatch_get_main_queue(), ^{ device_motion_update(); }); }
+void runtime_feedback_attach(GCController *c) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ runtime_feedback_attach(c); }); return; }
+    if (!runtime_gyro_enabled()) return;
+    const char *name = (c.vendorName ?: @"controller").UTF8String;
+    GCMotion *m = c.motion;
+    if (!m || !m.hasRotationRate) { fprintf(stderr, "[gyro] %s has no gyro: motion stays with the %s\n", name, motionPad ? "other controller" : "device"); return; }
+    if (motionPad && motionPad != c) motionPad.motion.valueChangedHandler = nil;
+    if (m.sensorsRequireManualActivation) m.sensorsActive = YES;
+    runtime_motion_deadzone_default(0);
+    m.valueChangedHandler = ^(GCMotion *changed) { controller_sample(changed); };
+    motionPad = c; device_motion_update(); runtime_motion_live(1);
+    fprintf(stderr, "[gyro] %s: motion sensors on (gyro%s)\n", name, m.hasGravityAndUserAcceleration ? ", gravity" : ", acceleration");
+}
+void runtime_feedback_detach(GCController *c) {
+    if (!NSThread.isMainThread) { dispatch_async(dispatch_get_main_queue(), ^{ runtime_feedback_detach(c); }); return; }
+    if (motionPad != c) return;
+    c.motion.valueChangedHandler = nil; motionPad = nil; runtime_motion_live(0);
+    device_motion_update();
+}
 void runtime_rumble_set(unsigned side, float al, float fl, float ah, float fh) { (void)side; (void)al; (void)fl; (void)ah; (void)fh; }
 int runtime_rumble_gain_locked(void) { return 1; }
 float runtime_rumble_gain(void) { return 1; }
 void runtime_rumble_gain_set(float g) { (void)g; }
 #else
+void runtime_feedback_start(void) {}
 #import <CoreHaptics/CoreHaptics.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>

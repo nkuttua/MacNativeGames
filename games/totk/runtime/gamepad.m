@@ -556,6 +556,7 @@ void runtime_gamepad_start(void) {
     load_controller_map();
     load_controller_type();
     load_mouse_mode();
+    runtime_feedback_start();
     NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
     [center addObserverForName:GCControllerDidConnectNotification object:nil queue:NSOperationQueue.mainQueue
                    usingBlock:^(NSNotification *notification) { attach_gamepad(notification.object); }];

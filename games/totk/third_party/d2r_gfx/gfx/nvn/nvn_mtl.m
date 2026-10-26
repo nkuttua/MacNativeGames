@@ -4787,6 +4787,9 @@ static void uw_note_present(const tex_t *t) {
 }
 static int uw_on_canvas(void) { return g_mfx.canvas && R.rt.n > 0 && R.rt.color[0] && R.rt.color[0]->serial == g_mfx.canvas; }
 /* The TOTK_MFX UI vertex shaders and four more that draw UI quads (inventory tab labels, map icons). */
+#ifndef GAME_BOTW
+static int uw_scene_picture(void);   /* TOTK: the quick menus' captured game picture (end of nvn_mtl.m) */
+#endif
 static int uw_ui_vs(const char *vs) {
     static const char *const more[] = {"1a40e5f5", "2117f58b", "8d4e36d0", "1469983f"};
     if (mfx_ui_vs(vs)) return 1;
@@ -17267,3 +17270,22 @@ int mtl_probe_pipeline_archive(void) {
     [NSFileManager.defaultManager removeItemAtPath:dir error:nil];
     return atomic_load(&built) + from_archive;
 }
+
+#ifndef GAME_BOTW
+/* The phone's full screen (aspect_patch.h): the quad draws a picture of the scene, the background the weapon / shield /
+   material / ability quick menus capture (ShortCutBG_00, scripts/make_romfs_patches.py), the pause and map blur: one of
+   its first fragment textures was rendered by the GPU at about 16:9 and is at least 320 pixels wide. That picture is the
+   wide view already, so it keeps the full width (UW_NOT_UI_DRAW, nvn_obj.h; as botw_uw_scene_picture). Squeezed like the
+   HUD, the world fell back to a 16:9 view while the d-pad was held (user, iPhone 15 Pro, 2026-10-24). iPhone and iPad
+   only: key 4 on the Mac was not checked with it. */
+static int uw_scene_picture(void) {
+#if TARGET_OS_IPHONE
+    for (int b = 0; b < 8; b++) {
+        uint64_t h = S.tex[1][b]; int tid = (int)(h & 0xfffff);
+        const tex_t *t = h && tid > 0 && tid < g_ntreg ? &g_treg[tid].t : NULL;
+        if (t && t->d.width >= 320 && t->d.height && fabs((double)t->d.width / t->d.height * 9 / 16 - 1) < 0.02 && gpu_owned(t->serial)) return 1;
+    }
+#endif
+    return 0;
+}
+#endif

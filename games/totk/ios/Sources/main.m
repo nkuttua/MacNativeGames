@@ -75,9 +75,9 @@ void runtime_settings_toggle(void) {}
 @interface TOTKMetalView : UIView @end
 @implementation TOTKMetalView
 + (Class)layerClass { return CAMetalLayer.class; }
-#if TARGET_OS_VISION
+/* visionOS windows resize; an iPhone's view is still portrait when the layer is attached (viewDidLoad) and turns landscape
+   only at its first layout (iPhone 15 Pro, iOS 27, 2026-10-24: a portrait drawable left the picture a squashed strip). */
 - (void)layoutSubviews { [super layoutSubviews]; runtime_ios_sync_drawable(self); }
-#endif
 - (void)safeAreaInsetsDidChange { [super safeAreaInsetsDidChange]; runtime_ios_sync_safe_area(self); }   // the HUD boxes keep out of the notch
 @end
 
@@ -299,6 +299,12 @@ static void audio_observe(void) {
     // Frame rate: Settings.bundle › TOTK_PHONE_FPS, or the 60 / 30 button of the touch controls, which saves it here too.
     NSString *fps = [NSUserDefaults.standardUserDefaults stringForKey:@"TOTK_PHONE_FPS"];
     if ([fps isEqualToString:@"30"]) setenv("TOTK_PHONE_FPS","30",0);
+    // Motion controls (Settings.bundle › TOTK_GYRO): on unless switched off; unset until the pane is first opened.
+    id gyro = [NSUserDefaults.standardUserDefaults objectForKey:@"TOTK_GYRO"];
+    if (gyro && ![gyro boolValue]) setenv("TOTK_GYRO","0",0);
+    // On-screen info (Settings.bundle › TOTK_HUD_MODE, fps_overlay.c): fps (default), all or off; the Mac's key 1 has no counterpart here.
+    NSString *hud = [NSUserDefaults.standardUserDefaults stringForKey:@"TOTK_HUD_MODE"];
+    setenv("TOTK_HUD_MODE",[@[@"all",@"off"] containsObject:hud] ? hud.UTF8String : "fps",0);
     setenv("TOTK_ROMFS_PATCHES",[res stringByAppendingPathComponent:@"romfs-patches"].fileSystemRepresentation,1);
     setenv("TOTK_ROMFS_PATCHES_OUT",[res stringByAppendingPathComponent:@"romfs-patches-out"].fileSystemRepresentation,1);
     setenv("TOTK_SHARED_FONTS",[res stringByAppendingPathComponent:@"shared-fonts"].fileSystemRepresentation,1);

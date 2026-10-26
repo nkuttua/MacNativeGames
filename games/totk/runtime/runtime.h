@@ -193,6 +193,7 @@ void runtime_motion_feed_mouse(const double acc_g[3], const double gyro_rad_s[3]
 void runtime_feedback_quiet(void);   /* focus lost: stop rumbling */
 #ifdef __OBJC__
 @class GCController;
+void runtime_feedback_start(void);   /* input start: iOS turns the device's own motion sensors on while no controller has a gyro */
 void runtime_feedback_attach(GCController *controller);
 void runtime_feedback_detach(GCController *controller);
 #endif

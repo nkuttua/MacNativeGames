@@ -118,6 +118,54 @@
 			<key>DefaultValue</key>
 			<false/>
 		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>陀螺儀瞄準：有陀螺儀的手把優先，否則用本機。也要在遊戲選項中開啟體感操作。重新啟動遊戲後生效 · Gyro aiming: a controller with a gyro (DualSense, DualShock 4, Switch Pro Controller), otherwise this device. Also turn on motion controls in the game's options. Takes effect after relaunching the game</string>
+			<key>Title</key>
+			<string>體感操作 · Motion controls</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>TOTK_GYRO</string>
+			<key>Title</key>
+			<string>陀螺儀 · Gyro</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>右上角的資訊；顯示與否不影響流暢度。重新啟動遊戲後生效 · The readout in the top-right corner; showing it does not affect smoothness. Takes effect after relaunching the game</string>
+			<key>Title</key>
+			<string>畫面資訊 · On-screen info</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>fps</string>
+			<key>Key</key>
+			<string>TOTK_HUD_MODE</string>
+			<key>Title</key>
+			<string>畫面資訊 · On-screen info</string>
+			<key>Titles</key>
+			<array>
+				<string>僅 FPS · FPS only</string>
+				<string>全部 · All (FPS, resolution, shaders)</string>
+				<string>關閉 · Off</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>fps</string>
+				<string>all</string>
+				<string>off</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

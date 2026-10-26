@@ -37,9 +37,20 @@ static const Glyph FONT[] = {
     {' ', {0, 0, 0, 0, 0, 0, 0}},
 };
 
-/* The settings panel's overlay choice (key 1 opens it, runtime/frontend.m): all, minimal (FPS only) or off. */
-static _Atomic int g_hud_mode = HUD_MODE_ALL;
-int fps_overlay_hud_mode(void) { return atomic_load_explicit(&g_hud_mode, memory_order_relaxed); }
+/* The settings panel's overlay choice (key 1 opens it, runtime/frontend.m): all, minimal (FPS only) or off. The start
+   comes from TOTK_HUD_MODE (all, fps or off; default all), which the iPhone, having no key 1, sets from its Settings pane
+   (ios/Sources/main.m); read at the first frame, since the app sets it after this file's constructors have run. */
+static _Atomic int g_hud_mode = -1;
+int fps_overlay_hud_mode(void) {
+    int mode = atomic_load_explicit(&g_hud_mode, memory_order_relaxed);
+    if (mode < 0) {
+        const char *e = getenv("TOTK_HUD_MODE");
+        int start = e && !strcmp(e, "fps") ? HUD_MODE_MINIMAL : e && !strcmp(e, "off") ? HUD_MODE_OFF : HUD_MODE_ALL;
+        atomic_compare_exchange_strong_explicit(&g_hud_mode, &mode, start, memory_order_relaxed, memory_order_relaxed);
+        mode = atomic_load_explicit(&g_hud_mode, memory_order_relaxed);
+    }
+    return mode;
+}
 int fps_overlay_hints_enabled(void) { return fps_overlay_hud_mode() != HUD_MODE_OFF; }
 int fps_overlay_full_hud(void) { return fps_overlay_hud_mode() == HUD_MODE_ALL; }
 void fps_overlay_set_hud_mode(int mode) {
@@ -159,6 +170,10 @@ void fps_overlay_text(const fps_overlay_info *info, char *text, size_t n) {
     if (info->scene_w > 0 && info->scene_h > 0) snprintf(sc, sizeof sc, " (%dx%d)", info->scene_w > 9999 ? 9999 : info->scene_w, info->scene_h > 9999 ? 9999 : info->scene_h);
     char gen[8] = "";
     if (info->gen > 0 && info->fps >= 0) snprintf(gen, sizeof gen, "+%d", info->gen > 999 ? 999 : info->gen);   // interpolated frames a second (key 2)
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+    // the iPhone's FPS-only setting (TOTK_HUD_MODE=fps): the frame rate alone, without the resolutions
+    if (fps_overlay_hud_mode() == HUD_MODE_MINIMAL) { snprintf(text, n, "FPS %s%s", fps, gen); return; }
+#endif
     // MetalFX did the upscale in the last frames (key 3 selects the manual MetalFX mode); 2K: true 2K output.
     // The whole line in the system font, so switching MetalFX does not switch the font.
     snprintf(text, n, "FPS %s%s  %s%s%s%s", fps, gen, ss, sc, info->mfx ? TOTK_UI("  MetalFX已开启", "  MetalFX on") : "", info->big ? "  2K" : "");

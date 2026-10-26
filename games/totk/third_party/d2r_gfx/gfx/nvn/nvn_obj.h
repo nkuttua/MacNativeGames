@@ -275,7 +275,7 @@ extern _Thread_local int botw_bra_attach;   /* tex_mtl for a render target: its 
 #define MFX_CANVAS_FMT_OK(f) pf_is_float(f)
 #define MFX_UI_DRAW(pr) mfx_ui_vs(pr->sh[0]->key)
 #define UW_UI_BEGINS(pr) mfx_ui_vs(pr->sh[0]->key)
-#define UW_NOT_UI_DRAW(vs, dw, di) !uw_ui_vs(vs) || (dw ? dw->count : di ? di->count : 0) != 6
+#define UW_NOT_UI_DRAW(vs, dw, di) !uw_ui_vs(vs) || (dw ? dw->count : di ? di->count : 0) != 6 || uw_scene_picture()
 #define BOTW_MFX_FRAME_RESET()
 #define BOTW_MFX_NO_UI_SCENE()
 #define MFX_CAM_SLOT 1

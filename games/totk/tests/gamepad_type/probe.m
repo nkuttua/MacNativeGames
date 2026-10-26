@@ -4,6 +4,7 @@
 
 _Noreturn void runtime_fail(const char *message) { fprintf(stderr, "FAIL: %s\n", message); exit(1); }
 uint64_t runtime_now_ns(void) { return 0; }
+void runtime_feedback_start(void) {}
 void runtime_feedback_attach(GCController *controller) { (void)controller; }
 void runtime_feedback_detach(GCController *controller) { (void)controller; }
 void runtime_feedback_quiet(void) {}
